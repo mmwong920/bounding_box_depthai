@@ -35,7 +35,7 @@ monoLeft.setBoardSocket(dai.CameraBoardSocket.LEFT)
 monoRight.setResolution(dai.MonoCameraProperties.SensorResolution.THE_400_P)
 monoRight.setBoardSocket(dai.CameraBoardSocket.RIGHT)
 
-lrcheck = False
+lrcheck = True
 subpixel = False
 
 stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.HIGH_DENSITY)
@@ -63,6 +63,8 @@ stereo.depth.link(spatialLocationCalculator.inputDepth)
 
 spatialLocationCalculator.out.link(xoutSpatialData.input)
 xinSpatialCalcConfig.out.link(spatialLocationCalculator.inputConfig)
+
+calculationAlgorithm = dai.SpatialLocationCalculatorAlgorithm.MODE
 
 ##---------------------------------------------------------------##
 #RGB
@@ -147,18 +149,42 @@ with dai.Device(pipeline) as device:
                 ymin = int(xyxy[1])
                 xmax = int(xyxy[2])
                 ymax = int(xyxy[3])
+                topLeft.x = xmin
+                topLeft.y = ymin
+                bottomRight.x = xmax
+                bottomRight.y = ymax
+                topLeft = dai.Point2f(xmin, ymin)
+                bottomRight = dai.Point2f(xmax, ymax)
+
+                # config.roi = dai.Rect(topLeft, bottomRight)
+                # config.calculationAlgorithm = calculationAlgorithm
+                # cfg = dai.SpatialLocationCalculatorConfig()
+                # cfg.addROI(config)
+                # spatialCalcConfigInQueue.send(cfg)
             except:
                 xmin,ymin,xmax,ymax = (0,0,0,0)
+                topLeft.x = xmin
+                topLeft.y = ymin
+                bottomRight.x = xmax
+                bottomRight.y = ymax
+                topLeft = dai.Point2f(xmin, ymin)
+                bottomRight = dai.Point2f(xmax, ymax)
 
             depthMin = depthData.depthMin
             depthMax = depthData.depthMax
 
             fontType = cv2.FONT_HERSHEY_TRIPLEX
+
+            config.roi = dai.Rect(topLeft, bottomRight)
+            config.calculationAlgorithm = calculationAlgorithm
+            cfg = dai.SpatialLocationCalculatorConfig()
+            cfg.addROI(config)
+            spatialCalcConfigInQueue.send(cfg)
             
             cv2.rectangle(depthFrameColor, (xmin, ymin), (xmax, ymax), color, cv2.FONT_HERSHEY_SCRIPT_SIMPLEX)
-            cv2.putText(depthFrameColor, f"X: {int(depthData.spatialCoordinates.x)} mm", (xmin + 10, ymin + 20), fontType, 0.5, 255)
-            cv2.putText(depthFrameColor, f"Y: {int(depthData.spatialCoordinates.y)} mm", (xmin + 10, ymin + 35), fontType, 0.5, 255)
-            cv2.putText(depthFrameColor, f"Z: {int(depthData.spatialCoordinates.z)} mm", (xmin + 10, ymin + 50), fontType, 0.5, 255)
+            cv2.putText(depthFrameColor, f"X: {int(depthData.spatialCoordinates.x)/1000} m", (xmin + 10, ymin + 20), fontType, 0.5, 255)
+            cv2.putText(depthFrameColor, f"Y: {int(depthData.spatialCoordinates.y)/1000} m", (xmin + 10, ymin + 35), fontType, 0.5, 255)
+            cv2.putText(depthFrameColor, f"Z: {int(depthData.spatialCoordinates.z)/1000} m", (xmin + 10, ymin + 50), fontType, 0.5, 255)
             break
 
         latencyMs = (dai.Clock.now() - inDepth.getTimestamp()).total_seconds() * 1000
