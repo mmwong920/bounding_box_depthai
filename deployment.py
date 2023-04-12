@@ -29,9 +29,9 @@ monoRight = pipeline.create(dai.node.MonoCamera)
 stereo = pipeline.create(dai.node.StereoDepth)
 
 # Properties
-monoLeft.setResolution(dai.MonoCameraProperties.SensorResolution.THE_800_P)
+monoLeft.setResolution(dai.MonoCameraProperties.SensorResolution.THE_400_P)
 monoLeft.setBoardSocket(dai.CameraBoardSocket.LEFT)
-monoRight.setResolution(dai.MonoCameraProperties.SensorResolution.THE_800_P)
+monoRight.setResolution(dai.MonoCameraProperties.SensorResolution.THE_400_P)
 monoRight.setBoardSocket(dai.CameraBoardSocket.RIGHT)
 
 stereo.initialConfig.setConfidenceThreshold(255)
@@ -61,18 +61,14 @@ xoutRgb = pipeline.create(dai.node.XLinkOut)
 xoutRgb.setStreamName("rgb")
 
 # Properties
+camRgb.setPreviewSize(640, 400)
 camRgb.setInterleaved(False)
-# camRgb.setColorOrder(dai.ColorCameraProperties.ColorOrder.RGB)
-camRgb.setBoardSocket(dai.CameraBoardSocket.RGB)
-camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_800_P)
-camRgb.setVideoSize(1280, 800)
-
-xoutRgb.input.setBlocking(False)
-xoutRgb.input.setQueueSize(1)
+camRgb.setColorOrder(dai.ColorCameraProperties.ColorOrder.RGB)
 
 # Linking
-# camRgb.preview.link(xoutRgb.input)
-camRgb.video.link(xoutRgb.input)
+camRgb.preview.link(xoutRgb.input)
+
+
 
 # Connect to device and start pipeline
 with dai.Device(pipeline) as device:
@@ -82,11 +78,11 @@ with dai.Device(pipeline) as device:
 
     text = TextHelper()
     hostSpatials = HostSpatialsCalc(device)
-    y = 200
-    x = 300
-    step = 3
-    delta = 5
-    hostSpatials.setDeltaRoi(delta)
+    # y = 200
+    # x = 300
+    # step = 3
+    # delta = 5
+    # hostSpatials.setDeltaRoi(delta)
 
     print('Connected cameras:', device.getConnectedCameraFeatures())
     # Print out usb speed
@@ -122,15 +118,27 @@ with dai.Device(pipeline) as device:
             y1 = int(xyxy[1])
             x2 = int(xyxy[2])
             y2 = int(xyxy[3])
+            spatials, centroid = hostSpatials.calc_spatials(depthData, (x1,y1,x2,y2)) # roi --> mean spacial & centroid
+            x = centroid["x"]
+            y = centroid["y"]
+            spa_x = spatials['x']
+            spa_y = spatials['y']
+            spa_z = spatials['z']
+
         except:
             x1,y1,x2,y2 = (0,0,0,0)
+            x = 0
+            y = 0
+            spa_x = float('nan')
+            spa_y = float('nan')
+            spa_z = float('nan')
 
         depthData = depthQueue.get()
         # Calculate spatial coordiantes from depth frame
-        spatials, centroid = hostSpatials.calc_spatials(depthData, (x1,y1,x2,y2)) # roi --> mean spacial & centroid
+        # spatials, centroid = hostSpatials.calc_spatials(depthData, (x1,y1,x2,y2)) # roi --> mean spacial & centroid
 
-        x = centroid["x"]
-        y = centroid["y"]
+        # x = centroid["x"]
+        # y = centroid["y"]
 
         # Get disparity frame for nicer depth visualization
         disp = dispQ.get().getFrame()
@@ -139,13 +147,9 @@ with dai.Device(pipeline) as device:
 
         text.rectangle(disp, (int(x1), int(y1)), (int(x2), int(y2)))
         
-        text.putText(disp, "X: " + ("{:.1f}m".format(spatials['x']/1000) if not math.isnan(spatials['x']) else "--"), (x + 10, y + 20))
-        text.putText(disp, "Y: " + ("{:.1f}m".format(spatials['y']/1000) if not math.isnan(spatials['y']) else "--"), (x + 10, y + 35))
-        text.putText(disp, "Z: " + ("{:.1f}m".format(spatials['z']/1000) if not math.isnan(spatials['z']) else "--"), (x + 10, y + 50))
-
-        latencyMs = (dai.Clock.now() - inRgb.getTimestamp()).total_seconds() * 1000
-        diffs = np.append(diffs, latencyMs)
-        print('Latency: {:.2f} ms, Average latency: {:.2f} ms, Std: {:.2f}'.format(latencyMs, np.average(diffs), np.std(diffs)))
+        text.putText(disp, "X: " + ("{:.1f}m".format(spa_x/1000) if not math.isnan(spa_x) else "--"), (x + 10, y + 20))
+        text.putText(disp, "Y: " + ("{:.1f}m".format(spa_y/1000) if not math.isnan(spa_y) else "--"), (x + 10, y + 35))
+        text.putText(disp, "Z: " + ("{:.1f}m".format(spa_z/1000) if not math.isnan(spa_z) else "--"), (x + 10, y + 50))
 
         # Show the frame
         cv2.imshow("depth", disp)
@@ -161,6 +165,8 @@ with dai.Device(pipeline) as device:
         # cv2.putText(frame, str(label), (x1 + 10, y1 + 20), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
         # cv2.putText(frame, f"ID: {[t.id]}", (x1 + 10, y1 + 35), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
         # cv2.putText(frame, t.status.name, (x1 + 10, y1 + 50), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
+
+
         cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
 
         # cv2.putText(frame, f"X: {int(t.spatialCoordinates.x)} mm", (x1 + 10, y1 + 65), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
@@ -170,6 +176,10 @@ with dai.Device(pipeline) as device:
         # cv2.putText(frame, "NN fps: {:.2f}".format(fps), (2, frame.shape[0] - 4), cv2.FONT_HERSHEY_TRIPLEX, 0.4, color)
 
         cv2.imshow("tracker", frame)
+
+        latencyMs = (dai.Clock.now() - inRgb.getTimestamp()).total_seconds() * 1000
+        diffs = np.append(diffs, latencyMs)
+        print('Latency: {:.2f} ms, Average latency: {:.2f} ms, Std: {:.2f}'.format(latencyMs, np.average(diffs), np.std(diffs)))
 
         # Retrieve 'bgr' (opencv format) frame
         # cv2.imshow("rgb", inRgb.getCvFrame())
